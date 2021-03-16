@@ -7,6 +7,16 @@ import multiprocessing
 from http.cookiejar import CookieJar
 import shutil
 import sys
+import re
+
+def get_download_ext(filename):
+    filename = re.match(r"attachment; filename=\"(.*?)\"", filename, flags=0).group(1)
+    if filename.endswith('.apk'):
+        return 'apk'
+    elif filename.endswith('.xapk'):
+        return 'xapk'
+    else:
+        raise ValueError(f'File extension \'{filename.split(".")[-1]}\'not recognized')
 
 def download_apk(packageName, dst='.'):
     headers = {
@@ -14,15 +24,17 @@ def download_apk(packageName, dst='.'):
         'referer' : 'https://apkpure.com/apkpure/{}/download?from=details'.format(packageName),
     }
     urlFormat = 'https://apkpure.com/apkpure/{}/download?from=details'.format(packageName)
-    #print(f"1st url:{urlFormat}")
     r = requests.get(urlFormat, headers=headers)
     tree = html.fromstring(r.content)
     downloadUrl = tree.xpath('//*[@id="download_link"]/@href')[0]
-    #print(downloadUrl)
 
     with (requests.get(downloadUrl, stream=True)) as r:
-        with open(f'{dst}/{packageName}.apk', 'wb') as f:
+        filename = r.headers["Content-Disposition"]
+        outPath = f'{dst}/{packageName}.{get_download_ext(filename)}'
+        with open(outPath, 'wb') as f:
             shutil.copyfileobj(r.raw, f)
+
+    return outPath
 
 if (len(sys.argv) != 2 and len(sys.argv) != 3):
     print("Usage: python fetch-apks-apkpure.py packageName [dstFolder]")
@@ -30,8 +42,9 @@ if (len(sys.argv) != 2 and len(sys.argv) != 3):
 
 try:
     dst = sys.argv[2] if len(sys.argv) == 3 else '.'
-    download_apk(sys.argv[1], dst)
-    print(f"Downloaded {sys.argv[1]}")
-except:
+    outPath = download_apk(sys.argv[1], dst)
+    print(f"Downloaded {sys.argv[1]} into {outPath}")
+except Exception as e:
     print(f"Error downloading {sys.argv[1]}. Is the package name correct? Does it exist in apkpure.com?")
+    print(f"Exception: {e}")
     exit(-1)
